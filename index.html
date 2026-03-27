@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a1a">
+<title>Rocky!</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
+
+  :root {
+    --gold:   #f0d060;
+    --orange: #d4882a;
+    --dark:   #2a1a08;
+    --cream:  #f5f0e0;
+    --bg:     #0a0a1a;
+    --muted:  #7a8aaa;
+    --accent: #c4a870;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; }
+
+  body {
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    min-height: 100dvh;
+    font-family: 'Press Start 2P', monospace;
+    overflow-x: hidden;
+    overflow-y: auto;
+    position: relative;
+    padding-top:    max(20px, env(safe-area-inset-top));
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+    padding-left:   max(16px, env(safe-area-inset-left));
+    padding-right:  max(16px, env(safe-area-inset-right));
+  }
+
+  /*
+    iOS FIX: pseudo-elements on <body> can intercept touch events on Safari
+    even with pointer-events:none. Moved vignette + scanline to real <div>s
+    in the HTML instead so we have full control.
+  */
+  .scanline {
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px, transparent 3px,
+      rgba(0,0,0,0.07) 3px, rgba(0,0,0,0.07) 4px
+    );
+    pointer-events: none;
+    z-index: 50;
+  }
+  .vignette {
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.65) 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  canvas.stars-canvas {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── Title ── */
+  h1 {
+    font-size: clamp(11px, 3.5vw, 20px);
+    color: var(--gold);
+    text-shadow: 0 0 10px #f0a020, 3px 3px 0 #7a5000;
+    margin-bottom: 20px;
+    letter-spacing: 2px;
+    text-align: center;
+    position: relative;
+    z-index: 2;
+    animation: titlePulse 2.4s ease-in-out infinite;
+  }
+  @keyframes titlePulse {
+    0%,100% { text-shadow: 0 0 10px #f0a020, 3px 3px 0 #7a5000; }
+    50%      { text-shadow: 0 0 28px #ffcc00, 3px 3px 0 #7a5000, 0 0 50px #f0a02066; }
+  }
+
+  /* ── Scene ── */
+  .scene {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    flex-wrap: wrap;
+    width: 100%;
+    max-width: 600px;
+  }
+
+  /*
+    iOS FIX: Canvas elements need cursor:pointer to be treated as
+    interactive by iOS Safari's hit-testing engine, otherwise click
+    events are silently dropped.
+  */
+  #rockyCanvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    cursor: pointer;           /* required for iOS click events */
+    filter: drop-shadow(0 0 18px #6b4a2a99);
+    transition: filter 0.25s;
+    width:  min(220px, 60vw);
+    height: min(220px, 60vw);
+    display: block;
+    position: relative;
+    z-index: 2;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    /* iOS FIX: explicitly tell the browser this element receives pointer events */
+    pointer-events: auto;
+  }
+  #rockyCanvas:active {
+    filter: drop-shadow(0 0 32px #d4884499);
+  }
+
+  /* ── Bubble wrap ── */
+  .bubble-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    max-width: 270px;
+    position: relative;
+    z-index: 2;
+  }
+  @media (min-width: 520px) {
+    .bubble-wrap { align-items: flex-start; }
+  }
+
+  .bubble {
+    background: var(--cream);
+    border: 4px solid var(--dark);
+    padding: 14px 18px;
+    position: relative;
+    box-shadow: 6px 6px 0 var(--dark);
+    width: 100%;
+    pointer-events: none; /* bubble itself is display-only */
+  }
+  /* Desktop: left arrow */
+  .bubble::before {
+    content: '';
+    position: absolute;
+    left: -22px; top: 50%;
+    transform: translateY(-50%);
+    border-top: 13px solid transparent;
+    border-bottom: 13px solid transparent;
+    border-right: 22px solid var(--dark);
+  }
+  .bubble::after {
+    content: '';
+    position: absolute;
+    left: -14px; top: 50%;
+    transform: translateY(-50%);
+    border-top: 10px solid transparent;
+    border-bottom: 10px solid transparent;
+    border-right: 15px solid var(--cream);
+  }
+  /* Mobile: top arrow */
+  @media (max-width: 519px) {
+    .bubble::before {
+      left: 50%; top: -22px;
+      transform: translateX(-50%);
+      border-top: none;
+      border-left: 13px solid transparent;
+      border-right: 13px solid transparent;
+      border-bottom: 22px solid var(--dark);
+    }
+    .bubble::after {
+      left: 50%; top: -14px;
+      transform: translateX(-50%);
+      border-top: none;
+      border-left: 10px solid transparent;
+      border-right: 10px solid transparent;
+      border-bottom: 15px solid var(--cream);
+    }
+  }
+
+  .bubble-text {
+    font-size: 10px;
+    color: var(--dark);
+    line-height: 1.9;
+    min-height: 26px;
+  }
+  .bubble-text::after {
+    content: '▮';
+    animation: cursorBlink 0.9s step-end infinite;
+    opacity: 0;
+    margin-left: 2px;
+    font-size: 8px;
+  }
+  @keyframes cursorBlink {
+    0%,100% { opacity: 0; }
+    50%      { opacity: 1; }
+  }
+
+  /* ── Name form ── */
+  .name-row {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    position: relative;
+    z-index: 2;
+  }
+
+  /*
+    iOS FIX: font-size >= 16px prevents the auto-zoom on focus.
+    -webkit-appearance: none removes iOS's default rounded input styling.
+    border-radius: 0 removes iOS's default rounded corners.
+    On desktop we use a media query to bring font size back down.
+  */
+  .name-row input {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 16px;
+    padding: 14px 12px;
+    border: 3px solid var(--dark);
+    background: #1a0a00;
+    color: var(--gold);
+    outline: none;
+    width: 100%;
+    box-shadow: 3px 3px 0 var(--dark);
+    border-radius: 0;
+    -webkit-appearance: none;
+    appearance: none;
+    transition: box-shadow 0.15s;
+    position: relative;
+    z-index: 2;
+    display: block;
+  }
+  .name-row input:focus { box-shadow: 4px 4px 0 var(--orange); }
+  .name-row input::placeholder { color: #5a4030; }
+  @media (min-width: 520px) {
+    .name-row input { font-size: 9px; padding: 10px 12px; }
+  }
+
+  /*
+    iOS FIX: <button> elements need explicit appearance reset.
+    min-height 48px ensures the tap target is large enough.
+    touch-action: manipulation removes 300ms delay without needing preventDefault.
+  */
+  .name-row button {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    min-height: 48px;
+    padding: 12px 14px;
+    border: 3px solid var(--dark);
+    background: var(--orange);
+    color: #fff8e0;
+    cursor: pointer;
+    box-shadow: 3px 3px 0 var(--dark);
+    letter-spacing: 1px;
+    width: 100%;
+    border-radius: 0;
+    -webkit-appearance: none;
+    appearance: none;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+    z-index: 2;
+    display: block;
+    transition: background 0.1s, transform 0.1s, box-shadow 0.1s;
+  }
+  .name-row button:hover  { background: #f0a040; transform: translate(-2px,-2px); box-shadow: 5px 5px 0 var(--dark); }
+  .name-row button:active { background: #f0a040; transform: translate(2px,2px);   box-shadow: 1px 1px 0 var(--dark); }
+
+  /* ── Lore ── */
+  .lore {
+    font-family: 'VT323', monospace;
+    font-size: clamp(16px, 4.5vw, 20px);
+    color: var(--muted);
+    margin-top: 20px;
+    text-align: center;
+    max-width: 420px;
+    line-height: 1.6;
+    position: relative;
+    z-index: 2;
+    padding: 0 8px;
+    pointer-events: none;
+  }
+  .lore span { color: var(--accent); }
+
+  /* ── Adopted badge ── */
+  #adoptedBadge {
+    display: none;
+    font-size: 7px;
+    color: #fff8e0;
+    background: var(--orange);
+    border: 3px solid var(--dark);
+    box-shadow: 3px 3px 0 var(--dark);
+    padding: 10px 14px;
+    letter-spacing: 1px;
+    text-align: center;
+    width: 100%;
+    position: relative;
+    z-index: 2;
+    pointer-events: none;
+    animation: badgePop 0.35s cubic-bezier(0.175,0.885,0.32,1.275) both;
+  }
+  @keyframes badgePop {
+    from { transform: scale(0.5); opacity: 0; }
+    to   { transform: scale(1);   opacity: 1; }
+  }
+
+  /* ── Floating hearts ── */
+  .heart-pop {
+    position: fixed;
+    pointer-events: none;
+    font-size: 28px;
+    animation: heartFloat 1.4s ease-out forwards;
+    z-index: 60;          /* above scanline */
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  @keyframes heartFloat {
+    0%   { opacity: 1; transform: translateY(0)     scale(1)   rotate(0deg);  }
+    100% { opacity: 0; transform: translateY(-90px) scale(1.5) rotate(20deg); }
+  }
+
+  /* ── Corner decorations ── */
+  .corner {
+    position: fixed;
+    width: 20px; height: 20px;
+    border: 3px solid #f0d06033;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .corner-tl { top: 12px;    left: 12px;  border-right: none; border-bottom: none; }
+  .corner-tr { top: 12px;    right: 12px; border-left: none;  border-bottom: none; }
+  .corner-bl { bottom: 12px; left: 12px;  border-right: none; border-top: none;    }
+  .corner-br { bottom: 12px; right: 12px; border-left: none;  border-top: none;    }
+  @media (max-width: 360px) { .corner { display: none; } }
+</style>
+</head>
+<body>
+
+<!-- Decorative layers as real divs, NOT body pseudo-elements -->
+<!-- iOS Safari can mishandle pointer-events on ::before/::after of <body> -->
+<div class="vignette"></div>
+<div class="scanline"></div>
+
+<div class="corner corner-tl"></div>
+<div class="corner corner-tr"></div>
+<div class="corner corner-bl"></div>
+<div class="corner corner-br"></div>
+
+<canvas class="stars-canvas" id="starsCanvas"></canvas>
+
+<h1>⭐ Will you adopt me, question? ⭐</h1>
+
+<div class="scene">
+  <!--
+    iOS FIX: Adding onclick="" (even empty) to a non-anchor element
+    is a legacy trick that tells iOS WebKit this element is interactive.
+    Combined with cursor:pointer in CSS, this guarantees click events fire.
+  -->
+  <canvas id="rockyCanvas" width="220" height="220" onclick=""></canvas>
+
+  <div class="bubble-wrap">
+    <div class="bubble">
+      <div class="bubble-text" id="bubbleText">Please name</div>
+    </div>
+
+    <div class="name-row" id="nameForm">
+      <input
+        type="text"
+        id="nameInput"
+        maxlength="12"
+        placeholder="Your name..."
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"
+        enterkeyhint="done"
+      />
+      <button id="adoptBtn">ADOPT! 🪨</button>
+    </div>
+
+    <div id="adoptedBadge"></div>
+  </div>
+</div>
+
+<div class="lore">
+  Species: <span>Eridian</span> &nbsp;|&nbsp; Origin: <span>40 Eridani</span><br>
+  Loves: <span>ammonia, jazz, and science</span><br>
+  Hobbies: <span>floating, glowing, and being adorable</span><br>
+  Friends: <span>Shyshy, Noise Noise, and.... you??</span>
+</div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════
+//  STARFIELD
+// ═══════════════════════════════════════════════
+const starCanvas = document.getElementById('starsCanvas');
+const sCtx = starCanvas.getContext('2d');
+let starW, starH, starList = [];
+
+function initStars() {
+  starW = starCanvas.width  = window.innerWidth;
+  starH = starCanvas.height = window.innerHeight;
+  starList = Array.from({ length: 140 }, () => ({
+    x:     Math.random() * starW,
+    y:     Math.random() * starH,
+    r:     Math.random() * 1.5 + 0.3,
+    speed: Math.random() * 0.006 + 0.002,
+    phase: Math.random() * Math.PI * 2,
+  }));
+}
+
+function drawStars(t) {
+  sCtx.clearRect(0, 0, starW, starH);
+  for (const s of starList) {
+    const a = 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(t * s.speed * 60 + s.phase));
+    sCtx.beginPath();
+    sCtx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    sCtx.fillStyle = 'rgba(220,230,255,' + a + ')';
+    sCtx.fill();
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  ROCKY
+// ═══════════════════════════════════════════════
+const rockyCanvas = document.getElementById('rockyCanvas');
+const rCtx = rockyCanvas.getContext('2d');
+rCtx.imageSmoothingEnabled = false;
+
+let PX = 9;
+function recalcPX() {
+  var rect = rockyCanvas.getBoundingClientRect();
+  var cssSize = Math.min(rect.width || 220, rect.height || 220);
+  PX = Math.max(4, Math.round(cssSize / 220 * 9));
+}
+
+window.addEventListener('resize', function() { initStars(); recalcPX(); });
+initStars();
+requestAnimationFrame(recalcPX);
+
+const COLORS = {
+  B:'#9b7e52', D:'#2e1a08', L:'#c8aa74', H:'#e0c080',
+  E:'#f0c830', K:'#150600', G:'#6a7a48', S:'#7a6040',
+  M:'#b89050', W:'#fff8b0',
+};
+
+function makeSprite() {
+  var pts = [];
+  function p(x,y,c){ pts.push([x,y,c]); }
+
+  // Legs
+  p(4,0,'D'); p(5,0,'B'); p(5,1,'D'); p(6,1,'B'); p(6,2,'S'); p(7,2,'D'); p(7,3,'B');
+  p(0,9,'D'); p(1,9,'B'); p(2,9,'D'); p(2,10,'B'); p(1,10,'S'); p(3,10,'D'); p(3,11,'B');
+  p(4,18,'D'); p(5,18,'B'); p(5,17,'D'); p(6,17,'B'); p(6,16,'S'); p(7,16,'D'); p(7,15,'B');
+  p(15,15,'B'); p(16,16,'D'); p(16,16,'S'); p(16,17,'D'); p(17,17,'B');
+  p(17,18,'D'); p(18,18,'B'); p(18,19,'D'); p(19,19,'B');
+  p(19,10,'D'); p(20,10,'B'); p(20,9,'D'); p(21,9,'B'); p(21,8,'D'); p(22,8,'B'); p(22,7,'S');
+  // Body
+  p(8,3,'D'); p(9,3,'D'); p(10,3,'D'); p(11,3,'D'); p(12,3,'D'); p(13,3,'D');
+  p(7,4,'D'); p(8,4,'L'); p(9,4,'H'); p(10,4,'H'); p(11,4,'H'); p(12,4,'L'); p(13,4,'B'); p(14,4,'D');
+  p(6,5,'D'); p(7,5,'B'); p(8,5,'L'); p(9,5,'E'); p(10,5,'K'); p(11,5,'E'); p(12,5,'H'); p(13,5,'E'); p(14,5,'K'); p(15,5,'B'); p(16,5,'D');
+  p(6,6,'D'); p(7,6,'B'); p(8,6,'M'); p(9,6,'W'); p(10,6,'E'); p(11,6,'E'); p(12,6,'M'); p(13,6,'W'); p(14,6,'E'); p(15,6,'M'); p(16,6,'D');
+  p(6,7,'D'); p(7,7,'B'); p(8,7,'B'); p(9,7,'L'); p(10,7,'E'); p(11,7,'K'); p(12,7,'E'); p(13,7,'L'); p(14,7,'B'); p(15,7,'B'); p(16,7,'D');
+  p(6,8,'D'); p(7,8,'B'); p(8,8,'M'); p(9,8,'B'); p(10,8,'W'); p(11,8,'E'); p(12,8,'B'); p(13,8,'M'); p(14,8,'B'); p(15,8,'B'); p(16,8,'D');
+  p(6,9,'D'); p(7,9,'B'); p(8,9,'B'); p(9,9,'L'); p(10,9,'M'); p(11,9,'B'); p(12,9,'M'); p(13,9,'L'); p(14,9,'B'); p(15,9,'B'); p(16,9,'D');
+  p(7,10,'D'); p(8,10,'B'); p(9,10,'G'); p(10,10,'G'); p(11,10,'B'); p(12,10,'G'); p(13,10,'G'); p(14,10,'B'); p(15,10,'D');
+  p(7,11,'D'); p(8,11,'B'); p(9,11,'L'); p(10,11,'B'); p(11,11,'S'); p(12,11,'B'); p(13,11,'L'); p(14,11,'B'); p(15,11,'D');
+  p(7,12,'D'); p(8,12,'B'); p(9,12,'M'); p(10,12,'B'); p(11,12,'B'); p(12,12,'B'); p(13,12,'M'); p(14,12,'B'); p(15,12,'D');
+  p(8,13,'D'); p(9,13,'B'); p(10,13,'L'); p(11,13,'S'); p(12,13,'L'); p(13,13,'B'); p(14,13,'D');
+  p(8,14,'D'); p(9,14,'B'); p(10,14,'B'); p(11,14,'B'); p(12,14,'B'); p(13,14,'B'); p(14,14,'D');
+  p(9,15,'D'); p(10,15,'B'); p(11,15,'S'); p(12,15,'B'); p(13,15,'D');
+  return pts;
+}
+
+var SPRITE_PTS = makeSprite();
+var isBlinking = false, adopted = false, happyTimer = 0;
+
+function warmShift(hex, timer) {
+  var r = parseInt(hex.slice(1,3),16);
+  var g = parseInt(hex.slice(3,5),16);
+  var b = parseInt(hex.slice(5,7),16);
+  var glow = Math.min(1,timer/120) * 0.35 * (0.5 + 0.5*Math.sin(Date.now()*0.007));
+  return 'rgb('+
+    (Math.min(255,r+glow*90)|0)+','+
+    (Math.min(255,g+glow*40)|0)+','+
+    (Math.min(255,b+glow*10)|0)+')';
+}
+
+function drawRocky(t) {
+  rCtx.clearRect(0, 0, rockyCanvas.width, rockyCanvas.height);
+  var bob = Math.sin(t * 0.002) * 3;
+  var ox = Math.floor((rockyCanvas.width  - 23*PX) / 2);
+  var oy = Math.floor((rockyCanvas.height - 20*PX) / 2) + bob;
+  for (var i = 0; i < SPRITE_PTS.length; i++) {
+    var pt = SPRITE_PTS[i];
+    var gx = pt[0], gy = pt[1], ck = pt[2];
+    if (isBlinking && (ck==='E'||ck==='W'||ck==='K')) continue;
+    var dx = ox + gx*PX;
+    var dy = oy + gy*PX;
+    if (gy<=2||gy>=16||gx<=3||gx>=20) {
+      dx += Math.sin(t*0.0025+gx*1.1)*1.8;
+      dy += Math.cos(t*0.002 +gy*0.9)*1.0;
+    }
+    var color = COLORS[ck];
+    if (adopted && happyTimer>0 && ck!=='K' && ck!=='D') color = warmShift(color,happyTimer);
+    rCtx.fillStyle = color;
+    rCtx.fillRect(dx, dy, PX, PX);
+  }
+}
+
+// ── Blink ──
+function scheduleBlink() {
+  setTimeout(function() {
+    isBlinking = true;
+    setTimeout(function() { isBlinking = false; scheduleBlink(); }, 130);
+  }, 2500 + Math.random()*4000);
+}
+scheduleBlink();
+
+// ── Typewriter ──
+var bubbleEl = document.getElementById('bubbleText');
+var typeInterval = null;
+function setLine(line) {
+  if (typeInterval) clearInterval(typeInterval);
+  bubbleEl.textContent = '';
+  var i = 0;
+  typeInterval = setInterval(function() {
+    if (i < line.length) bubbleEl.textContent += line[i++];
+    else clearInterval(typeInterval);
+  }, 52);
+}
+
+// ── Idle ──
+var idleLines = [
+  "Please name","I am alone...","Eridian cold",
+  "No human?","*clicks sadly*","Ees...?",
+  "Name me pls","Is dark here"
+];
+var lineIdx = 0;
+function cycleIdle() {
+  if (!adopted) { lineIdx=(lineIdx+1)%idleLines.length; setLine(idleLines[lineIdx]); }
+  setTimeout(cycleIdle, 3000 + Math.random()*2000);
+}
+setTimeout(cycleIdle, 3200);
+
+// ── Hearts ──
+var EMOJIS = ['💛','⭐','🪨','❤️','✨','🌟'];
+function spawnHeart() {
+  var el = document.createElement('div');
+  el.className = 'heart-pop';
+  el.textContent = EMOJIS[Math.floor(Math.random()*EMOJIS.length)];
+  el.style.left = (15 + Math.random()*70) + 'vw';
+  el.style.top  = (20 + Math.random()*50) + 'vh';
+  document.body.appendChild(el);
+  setTimeout(function(){ el.remove(); }, 1500);
+}
+
+// ── Shake ──
+function shakeCanvas() {
+  var tick = 0;
+  var id = setInterval(function() {
+    rockyCanvas.style.transform = 'translateX('+Math.sin(tick*2.2)*5+'px)';
+    if (++tick > 12) { clearInterval(id); rockyCanvas.style.transform = ''; }
+  }, 28);
+}
+
+// ── Adopt ──
+var happyLines = [
+  "EES EES!","I like you!","Amaze Grace!","Science is!",
+  "You my human!","EEEES!","So warm here!","Best human!","I am happy!"
+];
+
+function adoptRocky() {
+  var nameInput = document.getElementById('nameInput');
+  var name = nameInput.value.trim();
+  if (!name) { setLine("Give me name!"); shakeCanvas(); return; }
+
+  adopted = true;
+  happyTimer = 500;
+  document.getElementById('nameForm').style.display = 'none';
+
+  var badge = document.getElementById('adoptedBadge');
+  badge.textContent = '✅ ADOPTED BY ' + name.toUpperCase();
+  badge.style.display = 'block';
+
+  setLine(name + "!!");
+  setTimeout(function(){ setLine("Thank you, " + name + "!"); },     2000);
+  setTimeout(function(){ setLine("I am Rocky. Statement."); },        4500);
+  setTimeout(function(){ setLine("You smell like ammonia. Amaze, amaze, amaze!"); }, 7000);
+  setTimeout(cycleHappy, 10000);
+
+  for (var i = 0; i < 10; i++) {
+    (function(delay){ setTimeout(spawnHeart, delay); })(i * 180);
+  }
+}
+
+function cycleHappy() {
+  if (!adopted) return;
+  setLine(happyLines[Math.floor(Math.random()*happyLines.length)]);
+  setTimeout(cycleHappy, 2500 + Math.random()*2000);
+}
+
+// ── Poke Rocky ──
+/*
+  iOS FIX SUMMARY for canvas clicks:
+  1. cursor:pointer on the canvas (CSS) — done
+  2. onclick="" attribute on the canvas element (HTML) — done
+  3. Only use 'click' event listener — done (no touchstart/touchend)
+  4. No e.preventDefault() anywhere in the touch chain — done
+*/
+function pokeRocky() {
+  var pokes = adopted
+    ? ["EES EES!","Yes yes!","Science!!!","I like!","Amaze!","Touch again!","Heheheh!"]
+    : ["*click click*","Name me!","Eees?","Hello human!","I feel!","Ouch! Name me!"];
+  setLine(pokes[Math.floor(Math.random()*pokes.length)]);
+  spawnHeart();
+}
+rockyCanvas.addEventListener('click', pokeRocky);
+
+// ── Button ──
+document.getElementById('adoptBtn').addEventListener('click', adoptRocky);
+
+// ── Enter key ──
+document.getElementById('nameInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') { e.preventDefault(); adoptRocky(); }
+});
+
+// ── Main loop ──
+function loop(t) {
+  drawStars(t);
+  drawRocky(t);
+  if (happyTimer > 0) happyTimer--;
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
